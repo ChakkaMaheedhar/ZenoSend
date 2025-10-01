@@ -1,10 +1,17 @@
+// src/components/CampaignForm.tsx
 import React, { useState } from 'react'
 import { createCampaign, sendSelected, stats } from '../api'
+// If you have auth context with user email, uncomment:
+// import { useAuth } from '../auth'
 
 export default function CampaignForm({ selectedIds }: { selectedIds: number[] }) {
+  // const { user } = useAuth()
   const [name, setName] = useState('My Campaign')
   const [subject, setSubject] = useState('Hello from SendGrid-Lite')
-  const [fromEmail, setFromEmail] = useState('rama.k@amensys.com')
+
+  // Prefer: start empty (or user?.email || '')
+  const [fromEmail, setFromEmail] = useState<string>('') // was 'rama.k@amensys.com'
+
   const [textBody, setTextBody] = useState('Hi there!')
   const [htmlBody, setHtmlBody] = useState('<h2>Hi there!</h2><p>This is a test.</p>')
   const [busy, setBusy] = useState(false)
@@ -12,9 +19,16 @@ export default function CampaignForm({ selectedIds }: { selectedIds: number[] })
 
   const go = async () => {
     if (selectedIds.length === 0) { setMessage('Please select at least one contact.'); return; }
+    if (!fromEmail.trim()) { setMessage('Please enter a From email.'); return; }
     try {
       setBusy(true); setMessage('Creating campaign...')
-      const camp = await createCampaign({ name, subject, from_email: fromEmail, text_body: textBody, html_body: htmlBody })
+      const camp = await createCampaign({
+        name,
+        subject,
+        from_email: fromEmail.trim(),   // <- use whatever the user typed
+        text_body: textBody,
+        html_body: htmlBody
+      })
       setMessage(`Campaign #${camp.id} created. Sending ${selectedIds.length} messages...`)
       const res = await sendSelected(camp.id, selectedIds)
       setMessage(`Enqueued: ${res.enqueued}. Checking stats...`)
@@ -33,7 +47,13 @@ export default function CampaignForm({ selectedIds }: { selectedIds: number[] })
       <div className="grid two">
         <div>
           <label>From</label>
-          <input className="input" value={fromEmail} onChange={e => setFromEmail(e.target.value)} />
+          <input
+            className="input"
+            type="email"
+            placeholder="you@yourdomain.com"
+            value={fromEmail}
+            onChange={e => setFromEmail(e.target.value)}
+          />
         </div>
         <div>
           <label>Subject</label>

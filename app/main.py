@@ -1,11 +1,12 @@
 # app/main.py
 import os
 from typing import Optional
+
 from fastapi import FastAPI, Depends, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from sqlalchemy import select, func
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select, func
+from sqlalchemy.orm import Session
 
 from db import get_db
 from models import Campaign, Message
@@ -15,8 +16,12 @@ from schemas import (
     ComposeIn,
 )
 from tasks import enqueue_send
-from routers import auth as auth_router, contacts as contacts_router
+
+# Routers
+from routers import auth as auth_router
+from routers import contacts as contacts_router
 from routers import admin_users as admin_users_router
+from routers import contacts_import_mapping as contacts_import_mapping_router  # <-- NEW
 
 API_TOKEN = os.getenv("API_TOKEN", "dev-token-change-me")
 
@@ -34,14 +39,22 @@ app.add_middleware(
     allow_headers=["*", "x-api-key", "content-type", "authorization"],  # important
 )
 
-app.include_router(auth_router.router)
-app.include_router(contacts_router.router)       # <-- the only /contacts now
-app.include_router(admin_users_router.router)
-
-def require_token(x_api_key: str = Header(None)):
+def require_token(x_api_key: Optional[str] = Header(None)):
     if x_api_key != API_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
     return True
+
+# Core routers
+app.include_router(auth_router.router)
+app.include_router(contacts_router.router)        # exposes /contacts...
+app.include_router(admin_users_router.router)
+
+# Bulk Upload + Mapping (Preview -> Commit)
+# If you want these open (no x-api-key), remove `dependencies=[Depends(require_token)]`.
+app.include_router(
+    contacts_import_mapping_router.router,
+    dependencies=[Depends(require_token)]
+)
 
 @app.get("/health")
 def health():
@@ -60,8 +73,13 @@ def create_campaign(payload: CampaignIn, db: Session = Depends(get_db)):
 @app.post("/campaigns/{campaign_id}/send", dependencies=[Depends(require_token)])
 def send_campaign(campaign_id: int, status_filter: str = "valid", db: Session = Depends(get_db)):
     campaign = db.get(Campaign, campaign_id)
-    if not campaign: raise HTTPException(404, "Campaign not found")
-    contacts = db.execute(select(Message).where(Message.campaign_id == campaign_id)).scalars().all()
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+
+    contacts = db.execute(
+        select(Message).where(Message.campaign_id == campaign_id)
+    ).scalars().all()
+
     if not contacts:
         return {"enqueued": 0, "note": f"No contacts with status={status_filter}"}
 
@@ -69,26 +87,38 @@ def send_campaign(campaign_id: int, status_filter: str = "valid", db: Session = 
     for c in contacts:
         m = Message(campaign_id=campaign_id, contact_id=c.id, status="queued")
         db.add(m); db.flush(); enqueue_send(m.id); created += 1
-    db.commit(); return {"enqueued": created}
+    db.commit()
+    return {"enqueued": created}
 
 @app.post("/campaigns/{campaign_id}/send_selected", dependencies=[Depends(require_token)])
 def send_selected_contacts(campaign_id: int, payload: SendSelectedIn, db: Session = Depends(get_db)):
     camp = db.get(Campaign, campaign_id)
-    if not camp: raise HTTPException(404, "Campaign not found")
-    if not payload.contact_ids: return {"enqueued": 0, "note": "No contacts selected"}
+    if not camp:
+        raise HTTPException(404, "Campaign not found")
+    if not payload.contact_ids:
+        return {"enqueued": 0, "note": "No contacts selected"}
 
     enq = 0
     for cid in payload.contact_ids:
         m = Message(campaign_id=camp.id, contact_id=cid, status="queued")
         db.add(m); db.flush(); enqueue_send(m.id); enq += 1
-    db.commit(); return {"enqueued": enq}
+    db.commit()
+    return {"enqueued": enq}
 
 @app.get("/campaigns/{campaign_id}/stats", response_model=CampaignStats, dependencies=[Depends(require_token)])
 def campaign_stats(campaign_id: int, db: Session = Depends(get_db)):
-    counts = dict(db.execute(
-        select(Message.status, func.count()).where(Message.campaign_id == campaign_id).group_by(Message.status)
-    ).all())
-    return CampaignStats(queued=int(counts.get("queued", 0)), sent=int(counts.get("sent", 0)), failed=int(counts.get("failed", 0)))
+    counts = dict(
+        db.execute(
+            select(Message.status, func.count())
+            .where(Message.campaign_id == campaign_id)
+            .group_by(Message.status)
+        ).all()
+    )
+    return CampaignStats(
+        queued=int(counts.get("queued", 0)),
+        sent=int(counts.get("sent", 0)),
+        failed=int(counts.get("failed", 0))
+    )
 
 # ----------------- Quick Compose & Send -----------------
 @app.post("/compose/send", dependencies=[Depends(require_token)])
@@ -120,10 +150,18 @@ def compose_and_send(payload: ComposeIn, db: Session = Depends(get_db)):
     db.commit()
 
     if not target_ids:
-        return {"campaign_id": camp.id, "selected": 0, "valid_recipients": 0, "enqueued": 0, "note": "No recipients"}
+        return {
+            "campaign_id": camp.id,
+            "selected": 0,
+            "valid_recipients": 0,
+            "enqueued": 0,
+            "note": "No recipients"
+        }
 
     valid_rows = db.execute(
-        select(Contact).where(Contact.id.in_(list(target_ids))).where(Contact.status == "valid")
+        select(Contact)
+        .where(Contact.id.in_(list(target_ids)))
+        .where(Contact.status == "valid")
     ).scalars().all()
 
     enq = 0
@@ -132,4 +170,9 @@ def compose_and_send(payload: ComposeIn, db: Session = Depends(get_db)):
         db.add(m); db.flush(); enqueue_send(m.id); enq += 1
     db.commit()
 
-    return {"campaign_id": camp.id, "selected": len(target_ids), "valid_recipients": len(valid_rows), "enqueued": enq}
+    return {
+        "campaign_id": camp.id,
+        "selected": len(target_ids),
+        "valid_recipients": len(valid_rows),
+        "enqueued": enq
+    }

@@ -4,7 +4,6 @@ const API_KEY = import.meta.env.VITE_API_KEY || 'dev-token-change-me';
 
 type FetchOpts = RequestInit & { json?: any };
 
-// pull JWT from localStorage if present
 function authHeader() {
   const token = localStorage.getItem('token');
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -18,7 +17,6 @@ export async function api(path: string, opts: FetchOpts = {}) {
   };
 
   const url = `${API_BASE}${path}`;
-
   const hasJson = opts.json !== undefined;
   if (hasJson) headers['Content-Type'] = 'application/json';
 
@@ -37,21 +35,44 @@ export async function api(path: string, opts: FetchOpts = {}) {
   return ct.includes('application/json') ? res.json() : res.text();
 }
 
-// ---------- AUTH ----------
+/* -------- Bulk Import -------- */
+export async function apiPreview(file: File) {
+  const fd = new FormData();
+  fd.append("file", file);
+  return api('/contacts/import/preview', { method: 'POST', body: fd }) as Promise<{
+    upload_id: string; columns: string[]; sample: any[]; target_fields: string[];
+  }>;
+}
+
+export async function apiCommit(upload_id: string, mapping: Record<string, string>, validate: boolean) {
+  const fd = new FormData();
+  fd.append("upload_id", upload_id);
+  fd.append("mapping_json", JSON.stringify(mapping));
+  fd.append("validate", String(validate));
+  return api('/contacts/import/commit', { method: 'POST', body: fd }) as Promise<{
+    created: number; updated: number; validated: number;
+  }>;
+}
+
+/* -------- Auth -------- */
 export const login = (email: string, password: string) =>
   api('/auth/login', { method: 'POST', json: { email, password } });
 
-// ---------- CONTACTS ----------
+/* -------- Contacts -------- */
 export type ContactRow = {
   id: number;
+  first_name?: string | null;
+  last_name?: string | null;
   email: string;
+  linkedin_url?: string | null;
+  company?: string | null;
+  website?: string | null;
+  phone?: string | null;
+  role?: string | null;
   status?: string | null;
   reason?: string | null;
   provider?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  linkedin_url?: string | null;
-  owner_email?: string | null;   // <-- admin watermark field
+  owner_email?: string | null;
 };
 
 export const getContacts = (status?: string, q?: string) => {
@@ -62,28 +83,21 @@ export const getContacts = (status?: string, q?: string) => {
   return api(`/contacts${qs ? `?${qs}` : ''}`) as Promise<ContactRow[]>;
 };
 
-export const createContact = (payload: {
-  first_name?: string;
-  last_name?: string;
-  email: string;
-  linkedin_url?: string;
-}) => api('/contacts', { method: 'POST', json: payload });
+export const createContact = (payload: Partial<ContactRow> & { email: string }) =>
+  api('/contacts', { method: 'POST', json: payload });
 
-export const uploadCsv = (file: File) => {
-  const fd = new FormData();
-  fd.append('file', file);
-  return api('/contacts/upload', { method: 'POST', body: fd });
-};
+export const updateContact = (id: number, payload: Partial<ContactRow>) =>
+  api(`/contacts/${id}`, { method: 'PATCH', json: payload });
 
-export const validateBulk = (useSmtp = false) =>
-  api('/contacts/validate', { method: 'POST', json: { use_smtp_probe: useSmtp } });
+export const revalidateById = (id: number, useSmtp = true) =>
+  api(`/contacts/${id}/revalidate?use_smtp_probe=${useSmtp}`, { method: 'POST' }) as Promise<ContactRow>;
 
-export const validateOne = (email: string, useSmtp = false) =>
+export const validateOne = (email: string, useSmtp = true) =>
   api(`/contacts/validate_one?use_smtp_probe=${useSmtp}`, { method: 'POST', json: { email } }) as Promise<{
     id: number; email: string; status: string; reason?: string | null; provider?: string | null; verdict: string;
   }>;
 
-// ---------- CAMPAIGNS ----------
+/* -------- Campaigns -------- */
 export const createCampaign = (payload: any) =>
   api('/campaigns', { method: 'POST', json: payload });
 
@@ -93,11 +107,10 @@ export const sendSelected = (campaignId: number, ids: number[]) =>
 export const stats = (campaignId: number) =>
   api(`/campaigns/${campaignId}/stats`);
 
-// ---------- QUICK SEND ----------
 export const composeSend = (payload: any) =>
   api('/compose/send', { method: 'POST', json: payload });
 
-// ---------- ADMIN · USERS ----------
+/* -------- Admin Users -------- */
 export type AppUser = { id: number; email: string; role: 'user' | 'admin' };
 
 export const adminListUsers = () =>

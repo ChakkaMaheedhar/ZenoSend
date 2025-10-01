@@ -1,12 +1,11 @@
-// src/App.tsx
 import React from 'react'
 import { Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom'
 import ComposeCampaign from './components/ComposeCampaign'
 import ContactsPage from './components/ContactsPage'
 import AdminUsersPage from './pages/AdminUsers'
+import UploadContactsMapped from './pages/UploadContactsMapped'
 import { useAuth } from './auth'
 
-// Top shell (header/nav + right-side user & Logout)
 function Shell() {
   const { user, logout } = useAuth()
   const isAdmin = user?.role === 'admin'
@@ -15,9 +14,10 @@ function Shell() {
     <div className="wrap">
       <div className="nav flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {/* Only keep Contacts + (optionally) Compose */}
           <NavLink to="/contacts">Contacts</NavLink>
-          {!isAdmin && <NavLink to="/compose">Compose Campaign</NavLink>}
+          <NavLink to="/upload-contacts">Upload &amp; Map</NavLink>
+          {/* Compose visible to everyone now (admins included) */}
+          <NavLink to="/compose">Compose Campaign</NavLink>
           {isAdmin && <NavLink to="/admin/users">Admin · Users</NavLink>}
         </div>
         <div className="flex items-center gap-3">
@@ -34,9 +34,9 @@ export default function App() {
   return (
     <Routes>
       <Route element={<Shell />}>
-        {/* Default & any unknown paths -> Contacts */}
         <Route index element={<Navigate to="/contacts" replace />} />
         <Route path="contacts" element={<ContactsPage />} />
+        <Route path="upload-contacts" element={<UploadContactsMapped />} />
         <Route path="compose" element={<ComposeCampaign />} />
         <Route path="admin/users" element={<AdminUsersPage />} />
         <Route path="*" element={<Navigate to="/contacts" replace />} />

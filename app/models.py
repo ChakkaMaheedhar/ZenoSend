@@ -12,13 +12,24 @@ class Contact(Base):
     first_name = Column(String(120), nullable=True)
     last_name  = Column(String(120), nullable=True)
     email = Column(String(320), unique=True, nullable=False, index=True)
-    linkedin_url = Column(String(255), nullable=True)               # <- NEW
-    status = Column(String(20), nullable=False, default="new")      # new/valid/invalid/risky/unknown
+
+    # keep this name; the frontend already expects linkedin_url
+    linkedin_url = Column(String(255), nullable=True)
+
+    # ADD THESE:
+    company = Column(String(255), nullable=True)
+    website = Column(String(255), nullable=True)
+    phone   = Column(String(64),  nullable=True)
+    role    = Column(String(128), nullable=True)
+
+    status = Column(String(20), nullable=False, default="new")
     reason = Column(String(255), nullable=True)
     provider = Column(String(80), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     owner = relationship("User", back_populates="contacts")
+
 
 class Campaign(Base):
     __tablename__ = "campaigns"

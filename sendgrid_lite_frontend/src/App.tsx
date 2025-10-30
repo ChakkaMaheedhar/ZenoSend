@@ -1,7 +1,7 @@
 import React from 'react'
 import { Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom'
 import ComposeCampaign from './components/ComposeCampaign'
-import ContactsPage from './components/ContactsPage'
+import ContactsPage from './pages/Contacts'
 import AdminUsersPage from './pages/AdminUsers'
 import UploadContactsMapped from './pages/UploadContactsMapped'
 import { useAuth } from './auth'

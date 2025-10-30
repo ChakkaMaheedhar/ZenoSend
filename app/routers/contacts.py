@@ -1,4 +1,3 @@
-# app/routers/contacts.py
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import select, or_, func
@@ -16,9 +15,7 @@ router = APIRouter(prefix="/contacts", tags=["contacts"])
 
 
 def _to_out(c: Contact, owner_email: Optional[str]) -> ContactOut:
-    """
-    Build a ContactOut while normalizing email to avoid crashes on legacy bad data.
-    """
+    """Safely build ContactOut with normalized email."""
     data = {
         "id": c.id,
         "first_name": getattr(c, "first_name", None),
@@ -44,12 +41,10 @@ def list_contacts(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    # base query + owner join to expose owner_email
     stmt = select(Contact, User.email.label("owner_email")).join(
         User, User.id == Contact.owner_id, isouter=True
     )
 
-    # non-admins: only their own contacts
     if user.role != "admin":
         stmt = stmt.where(Contact.owner_id == user.id)
 
@@ -72,21 +67,12 @@ def list_contacts(
         )
 
     rows = db.execute(stmt).all()
-
-    # Be defensive: if any row is still invalid after normalization, skip it instead of 500'ing.
-    out: List[ContactOut] = []
-    skipped = 0
+    out = []
     for c, owner_email in rows:
         try:
             out.append(_to_out(c, owner_email))
         except Exception as e:
-            skipped += 1
-            log.warning(
-                "Skipping contact id=%s invalid email=%r: %s",
-                getattr(c, "id", "?"),
-                getattr(c, "email", None),
-                e,
-            )
+            log.warning("Skipping bad contact id=%s: %s", getattr(c, "id", "?"), e)
     return out
 
 
@@ -96,11 +82,10 @@ def create_contact(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    e = normalize_email(body.email).lower()  # sanitize on write
-
+    e = body.email.strip().lower()
     row = db.execute(select(Contact).where(Contact.email == e)).scalar_one_or_none()
+
     if row:
-        # allow owner/admin to update minimal fields on create attempt
         if user.role != "admin" and row.owner_id != user.id:
             raise HTTPException(status_code=403, detail="Forbidden")
         for f in (
@@ -138,7 +123,7 @@ def create_contact(
 
 
 class ContactUpdate(ContactIn):
-    email: Optional[str] = None  # PATCH: optional
+    email: Optional[str] = None
 
 
 @router.patch("/{contact_id}", response_model=ContactOut)
@@ -154,22 +139,13 @@ def update_contact(
     if user.role != "admin" and c.owner_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    # apply provided fields
-    for f in (
-        "first_name",
-        "last_name",
-        "linkedin_url",
-        "company",
-        "website",
-        "phone",
-        "role",
-    ):
+    for f in ("first_name", "last_name", "linkedin_url", "company", "website", "phone", "role"):
         val = getattr(body, f)
         if val is not None:
             setattr(c, f, val)
 
-    if body.email is not None:
-        c.email = normalize_email(body.email).lower()  # sanitize on update
+    if body.email:
+        c.email = body.email.strip().lower()
 
     db.commit()
     db.refresh(c)
@@ -185,7 +161,7 @@ def delete_contact(
 ):
     c = db.get(Contact, contact_id)
     if not c:
-        raise HTTPException(status_code=404, detail="Contact not found")
+        raise HTTPException(status_code=404, detail="Not found")
     if user.role != "admin" and c.owner_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
     db.delete(c)
@@ -193,15 +169,15 @@ def delete_contact(
     return
 
 
-# --------- Validate / Re-validate ---------
+# --------- ✅ Safe Validate / Re-validate ---------
 @router.post("/validate_one")
 def validate_one_api(
     payload: dict,
-    use_smtp_probe: bool = Query(True, description="SMTP probe on by default"),
+    use_smtp_probe: bool = Query(True, description="Enable SMTP probe (default: True)"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    email = normalize_email(str(payload.get("email", ""))).strip().lower()
+    email = str(payload.get("email", "")).strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="email required")
 
@@ -212,10 +188,15 @@ def validate_one_api(
         db.commit()
         db.refresh(row)
 
-    res = validate_email_record(email, timeout=8.0, do_smtp=use_smtp_probe)
+    try:
+        res = validate_email_record(email, timeout=8.0, do_smtp=use_smtp_probe)
+    except Exception as e:
+        log.warning("Validation failed for %s: %s", email, e)
+        res = {"verdict": "unknown", "reason": str(e), "provider": None}
+
     status_map = {"valid": "valid", "invalid": "invalid", "risky": "risky"}
-    row.status   = status_map.get(res.get("verdict"), "unknown")
-    row.reason   = res.get("reason")
+    row.status = status_map.get(res.get("verdict"), "unknown")
+    row.reason = res.get("reason")
     row.provider = res.get("provider")
     db.commit()
 
@@ -225,7 +206,7 @@ def validate_one_api(
         "status": row.status,
         "reason": row.reason,
         "provider": row.provider,
-        "verdict": res["verdict"],
+        "verdict": res.get("verdict", "unknown"),
     }
 
 
@@ -242,10 +223,15 @@ def revalidate_contact(
     if user.role != "admin" and c.owner_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    res = validate_email_record(c.email, timeout=8.0, do_smtp=use_smtp_probe)
+    try:
+        res = validate_email_record(c.email, timeout=8.0, do_smtp=use_smtp_probe)
+    except Exception as e:
+        log.warning("Revalidation failed for %s: %s", c.email, e)
+        res = {"verdict": "unknown", "reason": str(e), "provider": None}
+
     status_map = {"valid": "valid", "invalid": "invalid", "risky": "risky"}
-    c.status   = status_map.get(res.get("verdict"), "unknown")
-    c.reason   = res.get("reason")
+    c.status = status_map.get(res.get("verdict"), "unknown")
+    c.reason = res.get("reason")
     c.provider = res.get("provider")
     db.commit()
     db.refresh(c)

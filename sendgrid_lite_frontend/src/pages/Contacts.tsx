@@ -1,97 +1,172 @@
-// src/pages/Contacts.tsx
-import React, { useEffect, useMemo, useState } from 'react';
-import { useAuth } from '../auth';
+import React, { useEffect, useState } from "react";
+import { useAuth } from "../auth";
 import {
     getContacts,
     createContact,
     validateOne,
+    updateContact,
     type ContactRow,
-} from '../api';
+} from "../api";
 
 export default function ContactsPage() {
     const { user } = useAuth();
-    const isAdmin = user?.role === 'admin';
+    const isAdmin = user?.role === "admin";
 
-    // table data
     const [rows, setRows] = useState<ContactRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [err, setErr] = useState<string | null>(null);
 
-    // filters/search
-    const [statusFilter, setStatusFilter] = useState<'all' | 'new' | 'unknown' | 'risky' | 'valid' | 'invalid'>('all');
-    const [q, setQ] = useState('');
+    // Add Contact Form
+    const [fn, setFn] = useState("");
+    const [ln, setLn] = useState("");
+    const [email, setEmail] = useState("");
+    const [li, setLi] = useState("");
+    const [valBusy, setValBusy] = useState(false);
+    const [valPreview, setValPreview] = useState<{
+        status: string;
+        reason?: string | null;
+        provider?: string | null;
+    } | null>(null);
+    const smtpAlwaysOn = true;
 
-    // create form
-    const [fn, setFn] = useState('');
-    const [ln, setLn] = useState('');
-    const [email, setEmail] = useState('');
-    const [li, setLi] = useState('');
-    const [checking, setChecking] = useState(false);
-    const [checkBadge, setCheckBadge] = useState<string | null>(null);
+    // Modal
+    const [selectedRecruiter, setSelectedRecruiter] = useState<string | null>(null);
+    const [expandedContact, setExpandedContact] = useState<ContactRow | null>(null);
+    const [editMode, setEditMode] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [editValues, setEditValues] = useState({
+        first_name: "",
+        last_name: "",
+        linkedin_url: "",
+        phone: "",
+    });
+
+    useEffect(() => {
+        load();
+    }, []);
 
     async function load() {
         setLoading(true);
-        setErr(null);
         try {
-            const data = await getContacts(statusFilter === 'all' ? undefined : statusFilter, q || undefined);
+            const data = await getContacts();
             setRows(data);
         } catch (e: any) {
-            setErr(e.message || 'Failed to load contacts');
+            setErr(e.message || "Failed to load contacts");
         } finally {
             setLoading(false);
         }
     }
 
-    useEffect(() => {
-        load();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    async function onSave(e: React.FormEvent) {
+    async function handleSave(e: React.FormEvent) {
         e.preventDefault();
         setErr(null);
         try {
+            if (!email.trim()) throw new Error("Email is required");
             await createContact({
                 first_name: fn || undefined,
                 last_name: ln || undefined,
-                email,
+                email: email.trim().toLowerCase(),
                 linkedin_url: li || undefined,
             });
-            setFn(''); setLn(''); setEmail(''); setLi(''); setCheckBadge(null);
+            resetForm();
             await load();
         } catch (e: any) {
-            setErr(e.message || 'Failed to create contact');
+            setErr(e.message || "Failed to create contact");
         }
     }
 
-    async function onQuickCheck() {
-        if (!email) return;
+    async function handleValidateAndSave(e: React.FormEvent) {
+        e.preventDefault();
+        if (!email.trim()) {
+            setErr("Email is required");
+            return;
+        }
+        setErr(null);
+        setValBusy(true);
         try {
-            setChecking(true);
-            const r: any = await validateOne(email, false);
-            setCheckBadge(`verdict: ${r.verdict}${r.reason ? ` (${r.reason})` : ''}`);
+            const addr = email.trim().toLowerCase();
+            const r = await validateOne(addr); // full SMTP probe
+            setValPreview({
+                status: r.status,
+                reason: r.reason ?? null,
+                provider: r.provider ?? null,
+            });
+            await createContact({
+                first_name: fn || undefined,
+                last_name: ln || undefined,
+                email: addr,
+                linkedin_url: li || undefined,
+            });
+            resetForm();
             await load();
         } catch (e: any) {
-            setCheckBadge(`failed: ${e.message || 'error'}`);
+            setErr(e.message || "Validate & Save failed");
         } finally {
-            setChecking(false);
+            setValBusy(false);
         }
     }
 
-    async function validateRow(em: string) {
+    function resetForm() {
+        setFn("");
+        setLn("");
+        setEmail("");
+        setLi("");
+        setValPreview(null);
+    }
+
+    const grouped = isAdmin
+        ? rows.reduce((acc, r) => {
+            const owner = r.owner_email || "Unknown";
+            if (!acc[owner]) acc[owner] = [];
+            acc[owner].push(r);
+            return acc;
+        }, {} as Record<string, ContactRow[]>)
+        : { [user?.email || "Me"]: rows };
+
+    async function handleRevalidate(email: string) {
         try {
-            await validateOne(em, false);
+            await validateOne(email);
             await load();
-        } catch {
-            // ignore
+        } catch (err) {
+            console.error("Revalidate failed:", err);
         }
     }
 
-    const data = useMemo(() => rows, [rows]);
+    async function handleEditSave() {
+        if (!expandedContact) return;
+        setSaving(true);
+        try {
+            await updateContact(expandedContact.id, {
+                first_name: editValues.first_name,
+                last_name: editValues.last_name,
+                linkedin_url: editValues.linkedin_url,
+                phone: editValues.phone,
+            });
+            setEditMode(false);
+            await load();
+            setSaving(false);
+        } catch (e: any) {
+            console.error(e);
+            setSaving(false);
+        }
+    }
+
+    const getStatusColor = (status?: string) => {
+        switch (status) {
+            case "valid":
+                return "text-green-400";
+            case "risky":
+                return "text-yellow-400";
+            case "invalid":
+                return "text-red-400";
+            default:
+                return "text-gray-400";
+        }
+    };
 
     return (
-        <div className="container mx-auto px-4 py-6">
-            <div className="mb-6 flex items-center justify-between">
+        <div className="container mx-auto px-4 py-6 space-y-6">
+            <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-xl font-semibold">Contacts</h2>
                 {user && (
                     <div className="text-sm opacity-80">
@@ -100,127 +175,282 @@ export default function ContactsPage() {
                 )}
             </div>
 
-            {/* Create */}
-            <form onSubmit={onSave} className="card space-y-3 mb-6">
+            {/* --- Add / Validate form --- */}
+            <form onSubmit={handleSave} className="card space-y-3 mb-6 p-4">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                    <input className="input" placeholder="First name" value={fn} onChange={(e) => setFn(e.target.value)} />
-                    <input className="input" placeholder="Last name" value={ln} onChange={(e) => setLn(e.target.value)} />
-                    <div className="flex gap-2">
-                        <input
-                            className="input flex-1"
-                            placeholder="Email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            required
-                        />
-                        <button type="button" className="btn" onClick={onQuickCheck} disabled={checking || !email}>
-                            {checking ? 'Checking…' : 'Check'}
-                        </button>
-                    </div>
-                    <input className="input" placeholder="LinkedIn URL" value={li} onChange={(e) => setLi(e.target.value)} />
+                    <input
+                        className="input"
+                        placeholder="First name"
+                        value={fn}
+                        onChange={(e) => setFn(e.target.value)}
+                    />
+                    <input
+                        className="input"
+                        placeholder="Last name"
+                        value={ln}
+                        onChange={(e) => setLn(e.target.value)}
+                    />
+                    <input
+                        className="input"
+                        placeholder="Email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                    />
+                    <input
+                        className="input"
+                        placeholder="LinkedIn URL"
+                        value={li}
+                        onChange={(e) => setLi(e.target.value)}
+                    />
                 </div>
-                {checkBadge && <div className="text-xs opacity-80">{checkBadge}</div>}
+
+                <div className="flex flex-wrap items-center gap-3">
+                    <button type="submit" className="btn">
+                        Save
+                    </button>
+                    <button
+                        type="button"
+                        className="btn"
+                        onClick={handleValidateAndSave}
+                        disabled={valBusy}
+                    >
+                        {valBusy ? "Validating…" : "Validate & Save"}
+                    </button>
+                    <label className="flex items-center gap-2 text-sm opacity-80">
+                        <input type="checkbox" checked={smtpAlwaysOn} disabled />
+                        Use SMTP probe (always on)
+                    </label>
+                    {valPreview && (
+                        <span
+                            className={`ml-2 text-sm px-2 py-[2px] rounded ${valPreview.status === "valid"
+                                ? "bg-emerald-600/20 text-emerald-300"
+                                : valPreview.status === "risky"
+                                    ? "bg-amber-500/20 text-amber-300"
+                                    : valPreview.status === "invalid"
+                                        ? "bg-red-600/20 text-red-300"
+                                        : "bg-slate-600/20 text-slate-300"
+                                }`}
+                        >
+                            {valPreview.status}
+                            {valPreview.provider ? ` · ${valPreview.provider}` : ""}
+                            {valPreview.reason ? ` · ${valPreview.reason}` : ""}
+                        </span>
+                    )}
+                </div>
+
                 {err && <div className="text-red-400 text-sm">{err}</div>}
-                <button className="btn">Save</button>
             </form>
 
-            {/* Filters */}
-            <div className="card mb-4">
-                <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2">
-                        <label className="text-sm">Filter by status:</label>
-                        <select
-                            className="input"
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value as any)}
-                        >
-                            <option value="all">all</option>
-                            <option value="new">new</option>
-                            <option value="unknown">unknown</option>
-                            <option value="risky">risky</option>
-                            <option value="valid">valid</option>
-                            <option value="invalid">invalid</option>
-                        </select>
-                    </div>
-                    <input
-                        className="input flex-1 min-w-[240px]"
-                        placeholder="Search name/email/linkedin"
-                        value={q}
-                        onChange={(e) => setQ(e.target.value)}
-                    />
-                    <button className="btn" onClick={load} type="button">Search</button>
-                    <button
-                        className="btn"
-                        type="button"
-                        onClick={() => {
-                            setQ('');
-                            setStatusFilter('all');
-                            load();
-                        }}
-                    >
-                        Refresh
-                    </button>
+            {/* --- Main View --- */}
+            {loading ? (
+                <div className="text-gray-400 text-center py-6">Loading...</div>
+            ) : !isAdmin ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {rows.map((c) => (
+                        <ContactCard key={c.id} contact={c} onExpand={setExpandedContact} />
+                    ))}
                 </div>
-            </div>
+            ) : (
+                <>
+                    {!selectedRecruiter ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {Object.entries(grouped).map(([owner, contacts]) => (
+                                <div
+                                    key={owner}
+                                    className="p-4 rounded-lg border border-gray-700 bg-[#0f172a] hover:bg-[#1e293b] transition-all cursor-pointer"
+                                    onClick={() => setSelectedRecruiter(owner)}
+                                >
+                                    <div className="font-mono text-sm truncate">{owner}</div>
+                                    <div className="text-xs text-gray-400 mt-1">
+                                        Contacts: {contacts.length}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div>
+                            <div className="flex items-center justify-between mb-4">
+                                <button
+                                    className="btn btn-small"
+                                    onClick={() => setSelectedRecruiter(null)}
+                                >
+                                    ← Back to Recruiters
+                                </button>
+                                <h3 className="font-mono text-sm truncate">{selectedRecruiter}</h3>
+                            </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto card">
-                <table className="min-w-full text-sm">
-                    <thead className="text-left opacity-70">
-                        <tr>
-                            <th className="py-2 pr-4">First</th>
-                            <th className="py-2 pr-4">Last</th>
-                            <th className="py-2 pr-4">Email</th>
-                            <th className="py-2 pr-4">LinkedIn</th>
-                            <th className="py-2 pr-4">Status</th>
-                            <th className="py-2 pr-4">Reason</th>
-                            <th className="py-2 pr-4">Provider</th>
-                            {isAdmin && <th className="py-2 pr-4">Added by</th>}
-                            <th className="py-2 pr-4">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {loading ? (
-                            <tr><td colSpan={9} className="py-6 text-center opacity-70">Loading…</td></tr>
-                        ) : data.length === 0 ? (
-                            <tr><td colSpan={9} className="py-6 text-center opacity-70">No contacts</td></tr>
-                        ) : (
-                            data.map((r) => (
-                                <tr key={r.id} className="border-t border-gray-800">
-                                    <td className="py-2 pr-4">{r.first_name || ''}</td>
-                                    <td className="py-2 pr-4">{r.last_name || ''}</td>
-                                    <td className="py-2 pr-4 font-mono">{r.email}</td>
-                                    <td className="py-2 pr-4 text-xs truncate max-w-[240px]">
-                                        {r.linkedin_url ? (
-                                            <a className="underline opacity-80" href={r.linkedin_url} target="_blank" rel="noreferrer">
-                                                {r.linkedin_url}
-                                            </a>
-                                        ) : (
-                                            '—'
-                                        )}
-                                    </td>
-                                    <td className="py-2 pr-4">{r.status || '—'}</td>
-                                    <td className="py-2 pr-4 text-xs opacity-80">{r.reason || '—'}</td>
-                                    <td className="py-2 pr-4">{r.provider || '—'}</td>
-                                    {isAdmin && (
-                                        <td className="py-2 pr-4 text-xs">
-                                            {r.owner_email ? (
-                                                <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 bg-white/5 border border-white/10">
-                                                    Added by <span className="font-mono">{r.owner_email}</span>
-                                                </span>
-                                            ) : (
-                                                '—'
-                                            )}
-                                        </td>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                {grouped[selectedRecruiter]?.map((c) => (
+                                    <ContactCard
+                                        key={c.id}
+                                        contact={c}
+                                        onExpand={setExpandedContact}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </>
+            )}
+
+            {/* --- Details Modal with Inline Edit --- */}
+            {expandedContact && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+                    <div className="bg-[#0f172a] p-6 rounded-lg border border-gray-700 max-w-lg w-full relative">
+                        <button
+                            className="absolute top-2 right-3 text-gray-400 hover:text-white text-xl"
+                            onClick={() => {
+                                setExpandedContact(null);
+                                setEditMode(false);
+                            }}
+                        >
+                            ×
+                        </button>
+
+                        {!editMode ? (
+                            <>
+                                <h3 className="text-lg font-semibold mb-4">
+                                    {expandedContact.first_name} {expandedContact.last_name}
+                                </h3>
+                                <div className="text-sm space-y-1">
+                                    <div><span className="text-gray-400">Email:</span> {expandedContact.email}</div>
+                                    {expandedContact.phone && (
+                                        <div><span className="text-gray-400">Phone:</span> {expandedContact.phone}</div>
                                     )}
-                                    <td className="py-2 pr-4">
-                                        <button className="btn" onClick={() => validateRow(r.email)}>Validate</button>
-                                    </td>
-                                </tr>
-                            ))
+                                    {expandedContact.linkedin_url && (
+                                        <div>
+                                            <span className="text-gray-400">LinkedIn:</span>{" "}
+                                            <a
+                                                href={expandedContact.linkedin_url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="underline text-blue-400"
+                                            >
+                                                {expandedContact.linkedin_url}
+                                            </a>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex gap-3 mt-6">
+                                    <button
+                                        className="btn flex-1 bg-blue-500 hover:bg-blue-600"
+                                        onClick={() => {
+                                            setEditValues({
+                                                first_name: expandedContact.first_name || "",
+                                                last_name: expandedContact.last_name || "",
+                                                linkedin_url: expandedContact.linkedin_url || "",
+                                                phone: expandedContact.phone || "",
+                                            });
+                                            setEditMode(true);
+                                        }}
+                                    >
+                                        Edit
+                                    </button>
+                                    <button
+                                        className="btn flex-1"
+                                        onClick={() => handleRevalidate(expandedContact.email)}
+                                    >
+                                        Re-validate
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <h3 className="text-lg font-semibold mb-4">Edit Contact</h3>
+                                <div className="space-y-3 text-sm">
+                                    <input
+                                        className="input w-full"
+                                        placeholder="First name"
+                                        value={editValues.first_name}
+                                        onChange={(e) =>
+                                            setEditValues((p) => ({ ...p, first_name: e.target.value }))
+                                        }
+                                    />
+                                    <input
+                                        className="input w-full"
+                                        placeholder="Last name"
+                                        value={editValues.last_name}
+                                        onChange={(e) =>
+                                            setEditValues((p) => ({ ...p, last_name: e.target.value }))
+                                        }
+                                    />
+                                    <input
+                                        className="input w-full"
+                                        placeholder="Phone"
+                                        value={editValues.phone}
+                                        onChange={(e) =>
+                                            setEditValues((p) => ({ ...p, phone: e.target.value }))
+                                        }
+                                    />
+                                    <input
+                                        className="input w-full"
+                                        placeholder="LinkedIn URL"
+                                        value={editValues.linkedin_url}
+                                        onChange={(e) =>
+                                            setEditValues((p) => ({
+                                                ...p,
+                                                linkedin_url: e.target.value,
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                <div className="flex gap-3 mt-6">
+                                    <button
+                                        className="btn btn-ghost flex-1"
+                                        onClick={() => setEditMode(false)}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        className="btn flex-1"
+                                        onClick={handleEditSave}
+                                        disabled={saving}
+                                    >
+                                        {saving ? "Saving…" : "Save"}
+                                    </button>
+                                </div>
+                            </>
                         )}
-                    </tbody>
-                </table>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+/* --- Card --- */
+function ContactCard({
+    contact,
+    onExpand,
+}: {
+    contact: ContactRow;
+    onExpand: (c: ContactRow) => void;
+}) {
+    const getStatusColor = (status?: string) => {
+        switch (status) {
+            case "valid":
+                return "text-green-400";
+            case "risky":
+                return "text-yellow-400";
+            case "invalid":
+                return "text-red-400";
+            default:
+                return "text-gray-400";
+        }
+    };
+    return (
+        <div
+            onClick={() => onExpand(contact)}
+            className="p-4 rounded-lg border border-gray-700 bg-[#0f172a] hover:bg-[#1e293b] cursor-pointer transition-all"
+        >
+            <div className="font-semibold truncate">
+                {contact.first_name} {contact.last_name}
+            </div>
+            <div className="text-xs text-gray-400 truncate">{contact.email}</div>
+            <div className={`mt-2 text-sm font-bold ${getStatusColor(contact.status)}`}>
+                {contact.status || "unknown"}
             </div>
         </div>
     );

@@ -97,7 +97,7 @@ export default function ContactsPage() {
         setErr(null);
         setValBusy(true);
         try {
-            await validateOne(addr, true);
+            await validateOne(addr);
             await load();
         } catch (e: any) {
             setErr(e.message || 'Validation failed');
@@ -172,7 +172,7 @@ export default function ContactsPage() {
         setValBusy(true);
         try {
             const addr = email.trim().toLowerCase();
-            const r = await validateOne(addr, true); // SMTP probe always ON
+            const r = await validateOne(addr); // SMTP probe always ON
             setValPreview({ status: r.status, reason: r.reason ?? null, provider: r.provider ?? null });
             await createContact({
                 first_name: fn || undefined,

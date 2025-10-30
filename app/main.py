@@ -44,15 +44,17 @@ def require_token(x_api_key: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Unauthorized")
     return True
 
-# Core routers
-app.include_router(auth_router.router)
-app.include_router(contacts_router.router)        # exposes /contacts...
-app.include_router(admin_users_router.router)
+# Core routers (under /api)
+app.include_router(auth_router.router, prefix="/api")
+app.include_router(contacts_router.router, prefix="/api")
+app.include_router(admin_users_router.router, prefix="/api")
+
 
 # Bulk Upload + Mapping (Preview -> Commit)
 # If you want these open (no x-api-key), remove `dependencies=[Depends(require_token)]`.
 app.include_router(
     contacts_import_mapping_router.router,
+    prefix="/api",
     dependencies=[Depends(require_token)]
 )
 

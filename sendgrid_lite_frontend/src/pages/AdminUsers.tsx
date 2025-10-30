@@ -1,38 +1,58 @@
-// src/pages/AdminUsers.tsx
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../auth";
-import { Navigate } from "react-router-dom";
-import { adminListUsers, adminCreateUser, type AppUser } from "../api";
+import { Navigate, useNavigate } from "react-router-dom";
+import {
+    adminListUsers,
+    adminCreateUser,
+    getContacts,
+    type AppUser,
+    type ContactRow,
+} from "../api";
 
 export default function AdminUsersPage() {
     const { user } = useAuth();
+    const navigate = useNavigate();
     if (user?.role !== "admin") return <Navigate to="/" replace />;
 
     const [rows, setRows] = useState<AppUser[]>([]);
+    const [contacts, setContacts] = useState<ContactRow[]>([]);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [role, setRole] = useState<'user' | 'admin'>("user");
+    const [role, setRole] = useState<"user" | "admin">("user");
     const [busy, setBusy] = useState(false);
     const [err, setErr] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
 
     async function load() {
         try {
             setErr(null);
-            const data = await adminListUsers();
-            setRows(data);
+            setLoading(true);
+            const [userData, contactData] = await Promise.all([
+                adminListUsers(),
+                getContacts(),
+            ]);
+            setRows(userData);
+            setContacts(contactData);
         } catch (e: any) {
             setErr(e.message || "Failed to load users");
+        } finally {
+            setLoading(false);
         }
     }
 
-    useEffect(() => { load(); }, []);
+    useEffect(() => {
+        load();
+    }, []);
 
     async function onCreate(e: React.FormEvent) {
         e.preventDefault();
-        setBusy(true); setErr(null);
+        setBusy(true);
+        setErr(null);
         try {
             await adminCreateUser({ email, password, role });
-            setEmail(""); setPassword(""); setRole("user");
+            setEmail("");
+            setPassword("");
+            setRole("user");
             await load();
         } catch (e: any) {
             setErr(e.message || "Failed to create user");
@@ -41,17 +61,28 @@ export default function AdminUsersPage() {
         }
     }
 
-    return (
-        <div className="max-w-4xl mx-auto space-y-8">
-            <h1 className="text-2xl font-semibold">Admin · Users</h1>
+    // --- Count contacts per recruiter ---
+    const contactCounts = contacts.reduce(
+        (acc, c) => {
+            const owner = c.owner_email || "Unknown";
+            acc[owner] = (acc[owner] || 0) + 1;
+            return acc;
+        },
+        {} as Record<string, number>
+    );
 
+    return (
+        <div className="max-w-6xl mx-auto space-y-8">
+            <h1 className="text-2xl font-semibold">Admin · Recruiters Overview</h1>
+
+            {/* --- Create Recruiter Form --- */}
             <form onSubmit={onCreate} className="space-y-3 card">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <input
                         className="input"
                         placeholder="email@domain.com"
                         value={email}
-                        onChange={e => setEmail(e.target.value)}
+                        onChange={(e) => setEmail(e.target.value)}
                         required
                     />
                     <input
@@ -59,13 +90,13 @@ export default function AdminUsersPage() {
                         type="password"
                         placeholder="password"
                         value={password}
-                        onChange={e => setPassword(e.target.value)}
+                        onChange={(e) => setPassword(e.target.value)}
                         required
                     />
                     <select
                         className="input"
                         value={role}
-                        onChange={e => setRole(e.target.value as 'user' | 'admin')}
+                        onChange={(e) => setRole(e.target.value as "user" | "admin")}
                     >
                         <option value="user">user</option>
                         <option value="admin">admin</option>
@@ -77,20 +108,39 @@ export default function AdminUsersPage() {
                 </button>
             </form>
 
-            <div className="space-y-2">
-                {!rows.length && <div className="text-gray-400">No users yet.</div>}
-                {rows.map(u => (
-                    <div
-                        key={u.id}
-                        className="p-3 rounded-md border border-gray-800 bg-[#0f172a] flex items-center justify-between"
-                    >
-                        <div>
-                            <div className="font-mono">{u.email}</div>
-                            <div className="text-xs text-gray-400">role: {u.role}</div>
+            {/* --- Recruiter Cards --- */}
+            {loading ? (
+                <div className="text-gray-400 text-center py-10">Loading users…</div>
+            ) : !rows.length ? (
+                <div className="text-gray-400 text-center py-10">No users yet.</div>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {rows.map((u) => (
+                        <div
+                            key={u.id}
+                            className="p-4 rounded-lg border border-gray-700 bg-[#0f172a] hover:bg-[#1e293b] transition-all shadow-sm"
+                        >
+                            <div className="font-mono text-sm truncate">{u.email}</div>
+                            <div className="text-xs text-gray-400 mt-1">role: {u.role}</div>
+                            <div className="mt-2 text-sm">
+                                Contacts:{" "}
+                                <span className="font-semibold text-blue-400">
+                                    {contactCounts[u.email] || 0}
+                                </span>
+                            </div>
+
+                            <button
+                                className="btn mt-4 w-full text-sm"
+                                onClick={() =>
+                                    navigate("/contacts", { state: { scrollTo: u.email } })
+                                }
+                            >
+                                View Contacts
+                            </button>
                         </div>
-                    </div>
-                ))}
-            </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

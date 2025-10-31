@@ -40,6 +40,21 @@ export async function api(path: string, opts: FetchOpts = {}) {
   return ct.includes("application/json") ? res.json() : res.text();
 }
 
+export async function login(email: string, password: string) {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Login failed: ${errText}`);
+  }
+
+  return res.json();
+}
+
 /* ------------------ Contacts ------------------ */
 export type ContactRow = {
   id: number;

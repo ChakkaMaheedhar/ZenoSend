@@ -144,7 +144,7 @@ def compose_and_send(payload: ComposeIn, db: Session = Depends(get_db)):
             row = Contact(email=addr, status="new")
             db.add(row); db.flush()
         if payload.validate_extras:
-            res = validate_email_record(addr, timeout=6.0, do_smtp=False)
+            res = validate_email_record(addr, timeout=6.0, do_smtp=True)
             row.status = status_map.get(res["verdict"], "unknown")
             row.reason = res.get("reason")
             row.provider = res.get("provider")

@@ -7,9 +7,9 @@ import dns.resolver
 # ---------------------------
 # Config (via .env)
 # ---------------------------
-ALLOW_SMTP_PROBE = os.getenv("ALLOW_SMTP_PROBE", "false").lower() == "true"
+ALLOW_SMTP_PROBE = os.getenv("ALLOW_SMTP_PROBE", "true").lower() == "true"
 # If True, we will still try to probe big providers (Gmail/Outlook/Yahoo). Expect many to stay unverifiable.
-PROBE_BLOCKED = os.getenv("PROBE_BLOCKED_PROVIDERS", "false").lower() == "true"
+PROBE_BLOCKED = os.getenv("PROBE_BLOCKED_PROVIDERS", "true").lower() == "true"
 DEFAULT_TIMEOUT = float(os.getenv("VALIDATION_TIMEOUT", "6"))
 
 # SMTP probe envelope sender (null sender <> is sometimes treated differently)

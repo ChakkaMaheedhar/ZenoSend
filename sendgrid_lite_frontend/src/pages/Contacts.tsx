@@ -49,9 +49,10 @@ export default function ContactsPage() {
         setLoading(true);
         try {
             const data = await getContacts();
-            setRows(data);
+            setRows(Array.isArray(data) ? data : []);
         } catch (e: any) {
             setErr(e.message || "Failed to load contacts");
+            setRows([]); // Ensure rows is always an array
         } finally {
             setLoading(false);
         }
@@ -115,13 +116,13 @@ export default function ContactsPage() {
     }
 
     const grouped = isAdmin
-        ? rows.reduce((acc, r) => {
+        ? (Array.isArray(rows) ? rows : []).reduce((acc, r) => {
             const owner = r.owner_email || "Unknown";
             if (!acc[owner]) acc[owner] = [];
             acc[owner].push(r);
             return acc;
         }, {} as Record<string, ContactRow[]>)
-        : { [user?.email || "Me"]: rows };
+        : { [user?.email || "Me"]: Array.isArray(rows) ? rows : [] };
 
     async function handleRevalidate(email: string) {
         try {
@@ -449,7 +450,7 @@ function ContactCard({
                 {contact.first_name} {contact.last_name}
             </div>
             <div className="text-xs text-gray-400 truncate">{contact.email}</div>
-            <div className={`mt-2 text-sm font-bold ${getStatusColor(contact.status)}`}>
+            <div className={`mt-2 text-sm font-bold ${getStatusColor(contact.status || undefined)}`}>
                 {contact.status || "unknown"}
             </div>
         </div>

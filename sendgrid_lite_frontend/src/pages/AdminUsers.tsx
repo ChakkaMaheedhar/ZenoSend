@@ -31,8 +31,8 @@ export default function AdminUsersPage() {
                 adminListUsers(),
                 getContacts(),
             ]);
-            setRows(userData);
-            setContacts(contactData);
+            setRows(Array.isArray(userData) ? userData : []);
+            setContacts(Array.isArray(contactData) ? contactData : []);
         } catch (e: any) {
             setErr(e.message || "Failed to load users");
         } finally {
@@ -62,7 +62,7 @@ export default function AdminUsersPage() {
     }
 
     // --- Count contacts per recruiter ---
-    const contactCounts = contacts.reduce(
+    const contactCounts = (Array.isArray(contacts) ? contacts : []).reduce(
         (acc, c) => {
             const owner = c.owner_email || "Unknown";
             acc[owner] = (acc[owner] || 0) + 1;

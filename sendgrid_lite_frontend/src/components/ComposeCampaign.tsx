@@ -164,7 +164,7 @@ export default function ComposeCampaign() {
             try {
                 // fetch all; client-filter to 'valid' to avoid /contacts?status=valid 502s
                 const rows = (await getContacts()) as Contact[];
-                setContacts(rows.filter(r => r.status === 'valid'));
+                setContacts(Array.isArray(rows) ? rows.filter(r => r.status === 'valid') : []);
             } catch (e: any) {
                 setErr(e.message ?? 'Failed to load contacts');
                 setContacts([]); // UI still works with manual add

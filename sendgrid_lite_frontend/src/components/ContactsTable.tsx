@@ -7,8 +7,12 @@ export default function ContactsTable({ onSelectionChange }: { onSelectionChange
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
   const load = async () => {
-    const data = await getContacts(status || undefined)
-    setRows(data); setSelected(new Set()); onSelectionChange([])
+    try {
+      const data = await getContacts(status || undefined)
+      setRows(Array.isArray(data) ? data : []); setSelected(new Set()); onSelectionChange([])
+    } catch (e: any) {
+      setRows([]); setSelected(new Set()); onSelectionChange([])
+    }
   }
   useEffect(() => { load() }, [status])
 

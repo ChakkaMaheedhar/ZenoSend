@@ -262,11 +262,11 @@ export default function ContactsPage() {
                             {Object.entries(grouped).map(([owner, contacts]) => (
                                 <div
                                     key={owner}
-                                    className="p-4 rounded-lg border border-gray-700 bg-[#0f172a] hover:bg-[#1e293b] transition-all cursor-pointer"
+                                    className="p-4 rounded-2xl border border-[rgba(174,194,228,0.6)] bg-white/90 hover:border-[rgba(120,178,245,0.75)] hover:bg-white transition-all cursor-pointer shadow-[0_26px_48px_-32px_rgba(143,165,255,0.4)]"
                                     onClick={() => setSelectedRecruiter(owner)}
                                 >
-                                    <div className="font-mono text-sm truncate">{owner}</div>
-                                    <div className="text-xs text-gray-400 mt-1">
+                                    <div className="font-mono text-sm truncate text-slate-700">{owner}</div>
+                                    <div className="text-xs text-slate-500 mt-1">
                                         Contacts: {contacts.length}
                                     </div>
                                 </div>
@@ -300,10 +300,10 @@ export default function ContactsPage() {
 
             {/* --- Details Modal with Inline Edit --- */}
             {expandedContact && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
-                    <div className="bg-[#0f172a] p-6 rounded-lg border border-gray-700 max-w-lg w-full relative">
+                <div className="fixed inset-0 bg-white/60 backdrop-blur-xl flex items-center justify-center z-50">
+                    <div className="p-6 rounded-3xl border border-[rgba(174,194,228,0.6)] bg-white shadow-[0_28px_70px_-40px_rgba(143,165,255,0.4)] max-w-lg w-full relative">
                         <button
-                            className="absolute top-2 right-3 text-gray-400 hover:text-white text-xl"
+                            className="absolute top-2 right-3 text-slate-400 hover:text-slate-700 text-xl"
                             onClick={() => {
                                 setExpandedContact(null);
                                 setEditMode(false);
@@ -318,18 +318,18 @@ export default function ContactsPage() {
                                     {expandedContact.first_name} {expandedContact.last_name}
                                 </h3>
                                 <div className="text-sm space-y-1">
-                                    <div><span className="text-gray-400">Email:</span> {expandedContact.email}</div>
+                                    <div><span className="text-slate-500">Email:</span> {expandedContact.email}</div>
                                     {expandedContact.phone && (
-                                        <div><span className="text-gray-400">Phone:</span> {expandedContact.phone}</div>
+                                        <div><span className="text-slate-500">Phone:</span> {expandedContact.phone}</div>
                                     )}
                                     {expandedContact.linkedin_url && (
                                         <div>
-                                            <span className="text-gray-400">LinkedIn:</span>{" "}
+                                            <span className="text-slate-500">LinkedIn:</span>{" "}
                                             <a
                                                 href={expandedContact.linkedin_url}
                                                 target="_blank"
                                                 rel="noreferrer"
-                                                className="underline text-blue-400"
+                                                className="underline text-emerald-500"
                                             >
                                                 {expandedContact.linkedin_url}
                                             </a>
@@ -339,7 +339,7 @@ export default function ContactsPage() {
 
                                 <div className="flex gap-3 mt-6">
                                     <button
-                                        className="btn flex-1 bg-blue-500 hover:bg-blue-600"
+                                        className="btn flex-1"
                                         onClick={() => {
                                             setEditValues({
                                                 first_name: expandedContact.first_name || "",
@@ -436,24 +436,24 @@ function ContactCard({
     const getStatusColor = (status?: string) => {
         switch (status) {
             case "valid":
-                return "text-green-400";
+                return "text-emerald-500";
             case "risky":
-                return "text-yellow-400";
+                return "text-amber-500";
             case "invalid":
-                return "text-red-400";
+                return "text-rose-500";
             default:
-                return "text-gray-400";
+                return "text-slate-500";
         }
     };
     return (
         <div
             onClick={() => onExpand(contact)}
-            className="p-4 rounded-lg border border-gray-700 bg-[#0f172a] hover:bg-[#1e293b] cursor-pointer transition-all"
+            className="p-4 rounded-2xl border border-[rgba(174,194,228,0.6)] bg-white/90 hover:border-[rgba(120,178,245,0.75)] hover:bg-white cursor-pointer transition-all shadow-[0_24px_52px_-34px_rgba(143,165,255,0.35)]"
         >
             <div className="font-semibold truncate">
                 {contact.first_name} {contact.last_name}
             </div>
-            <div className="text-xs text-gray-400 truncate">{contact.email}</div>
+            <div className="text-xs text-slate-500 truncate">{contact.email}</div>
             <div className={`mt-2 text-sm font-bold ${getStatusColor(contact.status || undefined)}`}>
                 {contact.status || "unknown"}
             </div>

@@ -65,7 +65,7 @@ services:
       context: ./sendgrid_lite_frontend
       args:
         VITE_BASE: "/"
-        VITE_API_BASE: "http://localhost:8000" # proxied by nginx inside this container
+        VITE_API_BASE: "http://localhost:8000/api" # proxied by nginx inside this container
         VITE_API_KEY: "" # key is injected by nginx, not exposed to browser
     container_name: sg-lite-frontend
     depends_on:

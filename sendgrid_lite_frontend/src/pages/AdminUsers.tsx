@@ -110,21 +110,21 @@ export default function AdminUsersPage() {
 
             {/* --- Recruiter Cards --- */}
             {loading ? (
-                <div className="text-gray-400 text-center py-10">Loading users…</div>
+                <div className="text-slate-500 text-center py-10">Loading users…</div>
             ) : !rows.length ? (
-                <div className="text-gray-400 text-center py-10">No users yet.</div>
+                <div className="text-slate-500 text-center py-10">No users yet.</div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {rows.map((u) => (
                         <div
                             key={u.id}
-                            className="p-4 rounded-lg border border-gray-700 bg-[#0f172a] hover:bg-[#1e293b] transition-all shadow-sm"
+                            className="p-4 rounded-2xl border border-[rgba(174,194,228,0.6)] bg-white/90 hover:border-[rgba(120,178,245,0.75)] hover:bg-white transition-all shadow-[0_24px_52px_-34px_rgba(143,165,255,0.35)]"
                         >
-                            <div className="font-mono text-sm truncate">{u.email}</div>
-                            <div className="text-xs text-gray-400 mt-1">role: {u.role}</div>
-                            <div className="mt-2 text-sm">
+                            <div className="font-mono text-sm truncate text-slate-700">{u.email}</div>
+                            <div className="text-xs text-slate-500 mt-1">role: {u.role}</div>
+                            <div className="mt-2 text-sm text-slate-600">
                                 Contacts:{" "}
-                                <span className="font-semibold text-blue-400">
+                                <span className="font-semibold text-emerald-500">
                                     {contactCounts[u.email] || 0}
                                 </span>
                             </div>

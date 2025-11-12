@@ -1,9 +1,5 @@
 /* ------------------ Base Config ------------------ */
-const API_BASE =
-  import.meta.env.VITE_API_BASE
-    ? `${import.meta.env.VITE_API_BASE}/api`
-    : "/api";
-
+const API_BASE = import.meta.env.VITE_API_BASE || "";
 const API_KEY = import.meta.env.VITE_API_KEY || "dev-token-change-me";
 
 type FetchOpts = RequestInit & { json?: any };
